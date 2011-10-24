@@ -1,0 +1,29 @@
+#N canvas 340 440 775 300 10;
+#X msg 74 151 reload;
+#X obj 174 177 snd pd-fm.scm 1 1;
+#X obj 288 246 dac~;
+#X obj 284 53 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -6 0 10
+-262144 -1 -1 0 256;
+#X obj 440 53 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -6 0 10
+-262144 -1 -1 0 256;
+#X obj 503 26 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -6 0 10
+-262144 -1 -1 0 256;
+#X msg 278 84 Carrier-Frequency \$1;
+#X msg 434 84 Index \$1;
+#X msg 502 83 Amplitude \$1;
+#X obj 505 55 * 0.03;
+#X obj 163 53 nbx 5 14 -1e+37 1e+37 0 0 empty empty empty 0 -6 0 10
+-262144 -1 -1 0 256;
+#X msg 157 84 Fm-Frequency \$1;
+#X connect 0 0 1 0;
+#X connect 1 1 2 0;
+#X connect 1 1 2 1;
+#X connect 3 0 6 0;
+#X connect 4 0 7 0;
+#X connect 5 0 9 0;
+#X connect 6 0 1 0;
+#X connect 7 0 1 0;
+#X connect 8 0 1 0;
+#X connect 9 0 8 0;
+#X connect 10 0 11 0;
+#X connect 11 0 1 0;

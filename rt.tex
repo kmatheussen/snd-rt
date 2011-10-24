@@ -1,0 +1,1766 @@
+
+% PDF/PS creation: ($1=rt)
+%
+% #!/bin/sh
+% 
+% export TEXINPUT=/usr/share/texmf/tex/latex/base:/home/kjetil/slatex/.
+% 
+% slatex `pwd`/$1.tex
+% slatex `pwd`/$1.tex
+% dvipdf $1.dvi $1.pdf
+% acroread $1.pdf
+% #dvips -f $1.dvi -o $1.ps
+% #ghostview $1.ps
+
+% html creation:
+%
+% tex2page rt.tex
+
+
+
+\documentclass[11pt,english,a4paper]{article}
+\usepackage{slatex} 
+
+\usepackage[english]{babel}           
+\usepackage[latin1]{inputenc}
+\usepackage{times}
+\usepackage{a4wide}
+\usepackage{epsfig}
+%%\usepackage{makeidx}
+
+%\usepackage{color}
+
+\setlength{\parskip}{0.5em}
+\setlength{\parindent}{0em}
+
+%\pagestyle{empty}
+
+\title{Realtime extension for the sound editor SND.}
+
+\author{Kjetil S. Matheussen}
+\date{\today}
+
+
+
+
+\begin{document}
+%\newpage
+\maketitle
+
+
+
+\newpage
+
+
+\tableofcontents
+
+%\listoffigures
+%\listoftables
+
+%%\makeindex
+
+\newpage
+
+
+%%\section{Introduksjon}
+\section{Introduction}
+
+
+The RT extension for the sound editor SND consists of two parts:
+
+\begin{description}
+\item[The RT Engine] - An engine for doing
+  realtime signal processing.
+\item[The RT Compiler] - A compiler for a scheme-like programming language to generate realtime-safe code
+  understood by the RT Engine.
+\end{description}
+
+As far as possible I have tried to make the language behave and
+look like scheme. However, there are no support for consing,
+creating closures, or other operations
+that can trigger a garbage collection, so its not really a very schemish
+language although it visually looks a lot like scheme. Perhaps consing
+and more advanced stuff will be implemented later, but it should not be
+necessary as the code blends very fine into Guile. If you need
+to create lists or closures, you have to do that in Guile.
+So, actually, technically, the language is more like C than Scheme.
+
+
+\subsection*{Acknowledgments}
+
+Thanks to the guile development team for creating Guile. Thanks to the gcc development
+team for creating gcc. Thanks to Bil Schottstaedt for creating SND. Thanks
+to Notam and the Art Council Norway for economical support making this software.
+
+
+
+
+\newpage
+
+\section{Quick Start}
+
+\subsection{Setting up SND and Emacs}
+
+This is how I work. Perhaps you'll find this setup comfortable.
+
+
+\begin{enumerate}
+
+\item{Download and unpack the latest version of snd-ls from http://www.notam02.no/arkiv/src/snd/}
+
+\item{Compile and install it like this: 
+  \begin{quote}
+    ./build \newline
+    ./install
+\end{quote}}
+
+\item{Link a ``scheme'' executable so that it points to the snd-ls binary
+  \begin{schemedisplay}
+    ln -s  `which snd-ls` ~/bin/scheme
+  \end{schemedisplay}}
+  
+\item{Start the jack server}
+
+\item{Start emacs}
+
+\item{Maximize Emacs so that it fills the whole screen}
+
+\item{Load the file called ``rt-examples.scm'' into Emacs.}
+
+\item{Split your window in two parts: C-x 2}
+
+\item{Move the cursor to lower part window: C-x o}
+
+\item{Run snd-ls: M-x run-scheme}
+
+\item{Hide the SND window behind the Emacs window. We don't need to look at SND.}
+
+\item{Start the engine and compiler by writing \scheme|(load-from-path "rt-compiler.scm")|}
+
+\item{Move the cursor to the upper part window: C-x o}
+
+\item{Evaluate blocks of code by placing the cursor inside a block and press Ctrl+Alt+x}
+
+\end{enumerate}
+
+\subsection{Two short examples}
+
+
+1.
+\begin{schemedisplay}
+(let ((osc (make-oscil)))
+  (<rt-play> 0 3
+	   (lambda ()
+	     (out (* 0.8
+		     (oscil osc))))))
+\end{schemedisplay}
+
+A sinus is/should be heard for three seconds.
+
+
+2.
+
+\begin{schemedisplay}
+(define-rt2 (fib n)
+  (if (< n 2)
+      n
+      (+ (fib (- n 1))
+	 (fib (- n 2)))))
+
+(fib 30)
+-> 832040.0
+\end{schemedisplay}
+
+
+
+(There are more examples in the file rt-examples.scm)
+
+
+
+
+
+\newpage
+\section{The RT Engine}
+
+The main purpose of the RT Engine is to receive \scheme|<realtime>| objects
+and provide ways to control exactly when a \scheme|<realtime>| objects
+processing function is being called.  The API for doing this is hidden from the user, and is accessed by calling methods
+in the \scheme|<realtime>| class.
+
+
+
+\subsection{Features}
+\begin{itemize}
+\item{Realtime safe}
+\item{Jack driver}
+\item{Unlimited number of input and outputs}
+\item{The RT Engine is a class, and unlimited number of \scheme|<RT-Engine>|-instances can run simultaneously. \footnote{Well, actually just 16.}}
+\item{Protection mechanism provided to avoid locking up the computer when using too much CPU.}
+\item{Properly made priority queue system for events to ensure a stable CPU load (At least, I hope so).}
+\item{Controlled entirely from scheme using Guile}
+\end{itemize}
+
+\subsection{Guile Functions to control the Realtime Engine}
+
+\begin{description}
+
+\item[\scheme|(rte-pause)|] \hspace{\stretch{1}} \newline
+  Pause the engine.
+
+\item[\scheme|(rte-continue)|] \hspace{\stretch{1}} \newline
+  Starts running the engine after being paused.
+
+\item[\scheme|(rte-restart #:key num-input-ports num-output-ports)|] \hspace{\stretch{1}} \newline
+  Stops and starts engine. If you only have stuck sounds, use \scheme|(rte-silence!)| instead.
+  (Warning, theres a huge memory-leak when using this function.)
+
+\item[\scheme|(rte-silence!)|] \hspace{\stretch{1}} \newline
+ Call this function if you have stuck sounds
+ or \scheme|<realtime>| instances running.
+ (This function is equivilant to the \scheme|freeAll| OSC message for Supercollider3)
+
+
+\item[\scheme|(rte-time)|] \hspace{\stretch{1}} \newline
+   Returns the time in seconds since the engine was started. \newline
+   \scheme|(rte-time)| = \scheme|(rte-frames)| / \scheme|(rte-samplerate)|
+
+\item[\scheme|(rte-samplerate)|] \hspace{\stretch{1}} \newline
+  Returns the samplerate.
+
+\item[\scheme|(rte-frames)|] \hspace{\stretch{1}} \newline
+  Returns the number of frames since the engine was started.
+
+\item[\scheme|(rte-is-running?)|] \hspace{\stretch{1}} \newline
+  Returns true if engine is running. (Ie. not paused)
+
+\item[\scheme|(rte-max-cpu-usage)|] \hspace{\stretch{1}} \newline
+  This is a setter-function. The engine will stop calling further
+  \scheme|<realtime>| instances if the cpu-usage for the jack client
+  is higher than \scheme|(rte-max-cpu-usage)|. This is a safety mechanism to avoid
+  locking up the computer or jack to kill the client, which
+  can be unfortunate or embarrassing in certain situations.
+  Note however that if exactly 1 \scheme|<realtime>| instance is using too much
+  cpu, this mechanism will not work.
+  The default value is set to 80. At least on my machine, this is a comfortable
+  value, because the machine is still quite responsive at 80\%.
+
+
+\item[\scheme|(rte-info)|] \hspace{\stretch{1}} \newline
+  Returns a list of 7 elements:
+  \begin{enumerate}
+  \item Current size of the priority queue.
+  \item Size of the priority queue.
+  \item Number of lost events because the priority queue was full.
+  \item Number of events waiting to be run.
+  \item Number of \scheme|<realtime>| instances currently running.
+  \item CPU load reported by the jack client.
+  \item Number of times the execution of \scheme|<realtime>| instances
+    have been stopped because the cpu-usage was higher than \scheme|(rte-max-cpu-usage)|.
+    This number is mostly useful when being compared to a previous
+    value, or to check whether its higher than 0.
+  \end{enumerate}
+
+\end{description}
+
+
+\subsection{Global variables}
+
+\begin{description}
+
+\item[\scheme|*rt-engine*|] $ $ \newline
+  The main object, an instance of \scheme|<rt-engine>|.
+  Evaluate \scheme|(-> *rt-engine* dir)| to get the name of all the methods and subclasses.
+
+\item[\scheme|*rt-num-input-ports*|] $ $ \newline
+  Number of input jack ports. You can define this variable before loading rt-compiler.scm or rt-engine.scm
+  to override the default value of 8.
+
+\item[\scheme|*rt-num-output-ports*|] $ $ \newline
+  Number of output jack ports. You can define this variable before loading rt-compiler.scm or rt-engine.scm
+  to override the default value of 8.
+
+\item[\scheme|*out-bus*|] $ $ \newline
+  The bus connected to the soundcard output.
+
+\item[\scheme|*in-bus*|] $ $ \newline
+  The bus connected to the soundcard input.
+
+\item[\scheme|*rt*|] $ $ \newline
+  Always contains the last created rt object:
+  \begin{schemedisplay}
+    (<rt-out> (oscil))
+    (-> *rt* stop)
+  \end{schemedisplay}
+
+\end{description}
+
+
+\newpage
+\section{The RT compiler}
+
+
+The RT compiler works by translating the Scheme-like input-code into s-expression based
+C-code, which is further translated into normal C-code by the \scheme|eval-c| macro.
+The \scheme|eval-c| macro is found in the file eval-c.scm. \scheme|eval-c| does also the compiling and linking
+by calling gcc.
+
+
+\subsection{Features}
+
+\begin{itemize}
+\item{Compilation of simple lisp functions into machine code.}
+\item{All compiled code should normally be hard real time safe.}
+\item{The compiled code should be so fast, that theres normally nothing to gain by
+ writing a function in C. At least, thats the plan, its currently not always true, although
+ not far from.}
+\end{itemize}
+
+
+\subsection{Macros and functions to compile and run rt-functions}
+
+\begin{description}
+\item[\scheme|(rt-compile ...)|] \hspace{\stretch{1}} Macro \newline
+  
+    $ $ \begin{schemedisplay}
+      (define a (rt-compile (lambda (b c)
+			       (* b c))))
+
+    \end{schemedisplay}
+  
+%%%%%
+
+\item[\scheme|(rt-c ...)|] \hspace{\stretch{1}} Macro \newline
+  
+
+Same as rt-compile
+
+
+%%%%%
+
+\item[\scheme|(rt-funcall ...)|] \hspace{\stretch{1}} Macro \newline
+  
+    $ $ \begin{schemedisplay}
+           (rt-funcall a 2 3)
+           => 6.0
+\end{schemedisplay}
+
+%%%%%
+
+\item[\scheme|(rt-func ...)|] \hspace{\stretch{1}} Macro \newline
+  
+    $ $ \begin{schemedisplay}
+           (define a (rt-func (lambda (b c)
+				(* b c))))
+           (a 2 3)
+           => 6.0
+    \end{schemedisplay}
+
+%%%%%
+
+\item[\scheme|(rt-safety ...)|] \hspace{\stretch{1}} Setter function \newline
+  
+
+     rt-safety is a setter function. If set to 0, no runtime error checking is performed.
+     Its safe to set \scheme|(rt-safety)| to 0 if you don't get any ``RT RUNTIME ERROR'' error
+     messages to stderr when running your function, and you are sure thats impossible to happen.
+     On the other hand, if you do see an ``RT RUNTIME ERROR'' message printed to stderr when running
+     your function, theres a good chance you will lock up your machine by setting \scheme|(rt-safety)|
+     to 0.
+
+     For operations on lists, pairs and vectors, this could have an impact on the performance.
+     But, generally, don't expect to see a big improvement in the performance by setting it to 0.
+
+
+
+%%%%%
+
+\item[\scheme|(<rt> ...)|] \hspace{\stretch{1}} Macro \newline
+  
+
+Creates a subclass of \scheme|<realtime>| :
+    \begin{schemedisplay}
+       (define a (<rt> (lambda ()
+		         (out (oscil osc)))))
+      \end{schemedisplay}
+
+
+%%%%%
+
+\item[\scheme|(<rt-play> ...)|] \hspace{\stretch{1}} Macro \newline
+
+Creates a subclass of \scheme|<realtime>| :
+
+    \begin{schemedisplay}
+        (<rt-play> (lambda ()
+		     (out (- (random 1.8) 0.9))))
+        [white noise is being generated]
+
+        (<rt-play> 1
+		   (lambda ()
+		     (out (- (random 1.8) 0.9))))
+        [one second later, white noise is being generated]
+
+        (<rt-play> 1 10
+		   (lambda ()
+		     (out (- (random 1.8) 0.9))))
+        [one second later, white noise is being generated for ten seconds]
+
+    \end{schemedisplay}
+
+\scheme|<rt-play>| is a macro that calls \scheme|<rt>|.
+
+
+\item[\scheme|(<rt-play-abs> ...)|] \hspace{\stretch{1}} Macro \newline
+  Same behavior as rt-play, except that the start-time is absolute time:
+  \scheme|(<rt-play> 1 func)| is the same as \scheme|(<rt-play-abs> (+ 1 (rte-time)) func)|
+  
+\item[\scheme|(rt-clear-cache!)|] \hspace{\stretch{1}} Function \newline
+  Compiled rt-functions are cached into memory (currently not to disk).
+  \scheme|(rt-clear-cache!)| clears the cache.
+  
+  
+\end{description}
+
+
+\subsection{The «realtime» class}
+
+The \scheme|<realtime>| class provides the following methods:
+
+\begin{itemize}
+
+\item{\scheme|(play-abs [start] [duration])| \hspace{\stretch{1}} Method \newline
+  Starts playing at the absolute time \scheme|start|, stopping at the absolute time \scheme|(+ start duration)|. Default value for \scheme|start| is the current time.
+  If \scheme|duration| is not specified, a stop command is not scheduled.}
+
+\item{\scheme|(stop-abs [end])|  \hspace{\stretch{1}} Method \newline
+  Stops playing at the absolute time \scheme|end|. Default value for \scheme|end| is the current time.}
+
+\item{\scheme|(play [start] [duration])|  \hspace{\stretch{1}} Method \newline
+  Starts playing \scheme|start| seconds into the future from the current time, stopping at \scheme|(+ start duration)| seconds into the future from the current time.
+  Default value for \scheme|start| 0.
+  If \scheme|end| is not specified, a stop command is not scheduled.}
+
+\item{\scheme|(stop [end])|  \hspace{\stretch{1}} Method \newline
+  Stops playing \scheme|end| seconds into the future from the current time. Default value for \scheme|end| is 0}
+
+\end{itemize}
+
+
+
+\subsection{Various}
+
+\begin{itemize}
+
+\item{For define-rt, I have the following lines in my .emacs file:}
+
+  \begin{schemedisplay}
+  (font-lock-add-keywords
+   'scheme-mode
+   '(("(\\(define-rt\\)\\>\\s-*(?\\(\\sw+\\)?"
+      (1 font-lock-keyword-face)
+      (2 (cond ((match-beginning 1) font-lock-function-name-face)
+  	     ((match-beginning 2) font-lock-variable-name-face)
+	     (t font-lock-type-face))
+         nil t))))
+  \end{schemedisplay}
+
+
+\item{The definstrument-macro is implemented so that any rt-code
+  is compiled when the instruments definition is being evaluated, and
+  not when being called.}
+
+\item{
+  To extend the RT language with your own functions written in C, look at how
+  the \scheme|<rt-func>| function works in rt-compiler.scm. The \scheme|rt-renamefunc| macro may
+  also be of large use. Beware though that the API for \scheme|<rt-func>| and \scheme|rt-renamefunc|
+  might still change.
+
+}
+
+\end{itemize}
+
+
+
+
+\newpage
+\section{The RT programming language}
+
+
+\subsection{Features}
+
+\begin{itemize}
+\item{Provides a subset of the scheme r5rs standard}
+\item{Most of CLM is supported as well as various other functions specific for snd, sndlib and guile.}
+\item{Lisp macros}
+\item{Types are automatically determined, but the common lisp operators \scheme|declare|[3] and \scheme|the| can
+ be used on numeric variables and expressions to help the compiler produce more efficient code.}
+\item{Guile can both read and write variables which is used inside
+  the compiled functions.}
+\item{Possible to read Guile variables. \footnote{Writing Guile variables only half-worked,
+ and sometimes made guile segfault, so I removed it.}}
+\item{It \underline{should} not be possible to cause a segfault by running
+ a compiled functions. But for now, I know that at least when dividing or moduling by
+ 0, you will get a segfault. I don't know how to handle that situation yet.
+ There are also probably a lot of other situations that might cause
+ a segfault. Please send me code that cause segfaults.}
+\item{Error checking. If there is an error in your code that
+ cause the compilation to stop, you sometimes get a human readable
+ explanation about it, if you are lucky.}
+\end{itemize}
+
+
+\subsection{Limitations}
+
+\begin{itemize}
+\item{A variable can not change type. No dynamic typing.}
+\item{No allocation (consing, vectors, etc.)}
+\item{No closures}
+\item{No optional arguments or keyword arguments. (Optional arguments
+ are supported with the help of macros though.)}
+\item{No boolean type or symbols: \scheme|#f|=0, \scheme|#t|=1}
+\item{Not possible to call Guile functions.}
+\item{Not possible to set Guile variables. (There are ways around this though)}
+\item{No tail-recursiveness.}
+\item{The function to determine types is wrongly designed, so you sometimes
+ have to manually set the types for variables by using \scheme|declare| or \scheme|the|.
+ (its a bug that should be fixed, but theres other more important tasks
+ placed earlier in the queue.)}
+\end{itemize}
+
+
+\subsection{Types}
+
+
+\begin{itemize}
+\item{The rt-language automatically detects the types for variables.}
+
+\item{A variable can not change type.}
+
+\item{There is no boolean type, so \#f=0 and \#t=1.}
+
+\item{To improve the performance, use \scheme|declare| and \scheme|the| to specify types, just like in common lisp.
+  See below for usage of \scheme|declare| and \scheme|the|.
+  \footnote{Note also that although the compiler tries to determine the most fitted type for a numeric variable, it often fails.
+  So in some situations you have to declare numeric variables although it shouldn't have been necesarry. For an example,
+  study the C-code generated by the instrument called \scheme|extremely-simple-delay| found in the file rt-examples.scm. Two of the
+  local float variables should have been ints. This is because the compiler is buggy. It will hopefully be fixed though.}
+}
+
+\item{It is no point to declare non-numeric variables. But it won't hurt
+  either, unless wrongly declared, which will only make the compilation stop.}
+
+\item{Supported numeric types: \scheme|<int>|, \scheme|<float>| and \scheme|<double>| . These are
+  directly mapped to the int, float and double C-types.}
+
+\item{If there are more alternative types than one for a variable, and
+  its type has not been declared with \scheme|declare|, the type will
+  be determined based on the following rules for merging different types: \newline
+
+  \begin{tabular}{|l|l|l|l|l|} \hline
+    \scheme|<int>|    &  + & \scheme|<float>|   &  $->$ & \scheme|<float>|  \\ \hline
+    \scheme|<float>|  &  + & \scheme|<double>|  &  $->$ & \scheme|<double>| \\ \hline
+    \scheme|<int>|    &  + & \scheme|<double>|  &  $->$ & \scheme|<double>| \\ \hline
+    \scheme|<void>|   &  + & Any type           &  $->$ & \scheme|<void>| \\ \hline
+  \end{tabular}
+  
+  $ $ \newline
+
+  Everything else is illegal.}
+
+\item{I guess there can be a need for an int type that is guaranteed
+  to be at least, or exactly, 64 bits wide. Please tell me if you need such a type,
+  and what its name should be.}
+
+\item{Guile variables (ie. of type \scheme|<SCM>|) are automatically converted on the fly to the
+  proper types:
+  \begin{schemedisplay}
+   (let ((a (the <int> (vector-ref vec 2))))
+     a)
+  \end{schemedisplay}
+  Will result in code that works like this:
+  \begin{schemedisplay}
+   (let ((a (scm_to_int (vector-ref vec 2))))
+     a)
+  \end{schemedisplay}
+  Without using the \scheme|the| operator, it would have worked like this:
+  \begin{schemedisplay}
+   (let ((a (the <SCM> (vector-ref vec 2))))
+     a)
+  \end{schemedisplay}
+
+ For the first example, if \scheme|(vector-ref vec 2)| hadn't been a numeric value, or
+ there aren't as many as 3 elements in \scheme|vec|,
+ an error had been caught, and the evaluation of the compiled rt-code
+ would stop.}
+
+\end{itemize}
+
+
+\subsection{Closures}
+
+Closures are not supported. And worse, there is currently
+no checking whether the code is safe in a language
+that doesn't support closures.
+
+The following code:
+
+\begin{schemedisplay}
+(define a (rt-compile (lambda ()
+		         (let ((a (lambda (b)
+			            (declare (<int> b))
+			            (lambda ()
+			              b))))
+		           ((a 50))))))
+(rt-funcall a)
+\end{schemedisplay}
+    
+...returns 0. \footnote{The current behavior guarantee the return value to be 0. But that behavior
+  might change.}
+
+
+(Note, I manually had to add \scheme|(declare (<int> b))| to make it compile
+because of a bug in the compiler.)
+
+
+
+\subsection{Functions}
+
+\begin{schemedisplay}
+(define-rt (add-really a b)
+  (+ a b))
+
+(define-rt (add a b)
+  (add-really a b))
+
+(rt-funcall (rt-c (lambda ()
+		    (add 2 3))))
+=> 5
+\end{schemedisplay}
+
+Optional, rest or keyword arguments are not supported.
+
+
+
+\subsection{Macros}
+
+
+Macros are straight forward:
+
+\begin{schemedisplay}
+(define-rt-macro (add . args)
+  `(+ ,@args))
+
+(rt-funcall (rt-compile (lambda (a b c)
+			  (add a b c)))
+	    2 3 4)
+=> 9
+\end{schemedisplay}
+
+
+And keyword arguments:
+
+\begin{schemedisplay}
+(define-rt-macro (add a1 a2 (#:a3 3) (#:a4 4) (#:a5 5))
+  `(+ ,a1 ,a2 ,a3 ,a4 ,a5))
+
+(rt-funcall (rt-compile (lambda ()
+			  (add 1 2 #:a4 9))))
+=> 20
+\end{schemedisplay}
+[1+2+3+9+5]
+
+
+
+The function \scheme|rt-macroexpand| works the same as \scheme|macroexpand|, but for
+rt-macros. It can be used inside other rt-macros, and is currently used in
+the \scheme|if|, \scheme|min|, \scheme|max|, \scheme|and| and \scheme|or| macros to speed up some situations.
+
+
+When letting a variable name start with the prefix \scheme|expand/|, like this:
+\begin{schemedisplay}
+ (define-rt-macro (add expand/a expand/b)
+   `(+ a b))
+  \end{schemedisplay}
+  ..a and b are macroexpanded automatically. In some situations, this can cause
+  increased performance. (But not in the short add macro above though.)
+
+
+For the define-rt-macro macro, I have the following lines in my .emacs file:
+
+\begin{schemedisplay}
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(define-rt-macro\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 font-lock-constant-face
+       nil t))))
+\end{schemedisplay}
+
+
+
+
+
+
+
+\subsection{Reading and writing rt-variables from the guile-side}
+
+\begin{schemedisplay}
+(definstrument (instrument)
+  (let ((osc (make-oscil))
+	(vol 0.8))
+    (<rt-play> 0 10
+	      (lambda ()
+	        (out (* (oscil osc)
+		        vol))))))
+
+(define i (instrument))
+
+(-> i vol)
+=> 0.8
+
+(-> i osc)
+=> #<oscil freq: 440.000Hz, phase: 0.256>
+\end{schemedisplay}
+
+
+To change the volume:
+
+\begin{schemedisplay}
+(set! (-> i vol) 0.2)
+(-> i vol)
+=> 0.2
+\end{schemedisplay}
+
+To change the frequency:
+
+\begin{schemedisplay}
+(set! (mus-frequency (-> i osc)) 200)
+=> 200
+\end{schemedisplay}
+
+This will return an error:
+\begin{schemedisplay}
+(set! (-> i osc) (make-oscil))
+\end{schemedisplay}
+...because only numbers and buses can be set.
+
+
+
+
+
+\subsection{Shared variables}
+
+The guile-function \scheme|make-var| (with an optional value argument for value) allocates
+a variable that can be both read from and written to both from the guile and the rt side
+with the functions \scheme|read-var| and \scheme|write-var|:
+
+\begin{schemedisplay}
+(let ((vol (make-var)))
+  (<rt-play> 0 10
+	     (lambda ()
+	       (out 0 (* (read-var vol) (in 0)))))
+  (<rt-play> 0 10
+	     (lambda ()
+	       (out 1 (* (read-var vol) (in 1)))))
+  (write-var vol 0.2)
+  (in 5000
+      (lambda ()
+	(write-var vol 1.0))))
+\end{schemedisplay}
+
+(API might change)
+
+\scheme|make-glide-var|, \scheme|read-glide-var| and \scheme|write-glide-var| are functions
+which interpolates the read values to avoid large jumps. Check out source code for syntax.
+
+
+
+
+
+\subsection{Midi}
+
+Receiving alsa midi is supported. Check out rt-examples.scm for a quite large example.
+If you don't want alsa-midi (for example if you're running osx), set \scheme|*use-alsa-midi*|
+to \scheme|#f| before loading rt-compiler.scm.
+
+Receving inside the rt-process:
+\begin{schemedisplay}
+(<rt-play> (lambda ()
+              (receive-midi (lambda (control data1 data2)
+                               (printf "gakk! %x %x %x\\n" control data1 data2)))))
+\end{schemedisplay}
+
+Receiving in guile:
+\begin{schemedisplay}
+(receive-midi (lambda (control data1 data2)
+                 (c-display control data1 data2)))
+\end{schemedisplay}
+
+To turn off receiving in guile, call the function \scheme|(stop-receiving-midi!)|.
+
+The guile and rt versions of receive-midi should not be used simultaniously since they
+read from the same alsa seq from two different threads without using mutex, semaphores or 
+similar mechanisms.
+
+
+\subsection{Ladspa plugins}
+
+Ladspa-plugins are supported, altough a bit inefficiently. Using ladspa-plugins might also
+trigger bugs in some plugins because the framesize is currently always 1. The three
+plugins I have tried so far have worked fine though. \footnote{I think at least all swh-plugins should work
+fine because they seem to use a common ringbuffer to buffer up sound-data.}
+
+\scheme|make-ladspa| is a guile function that creates a plugin object. First argument is filename,
+and second is the name of the label.
+
+\scheme|ladspa-set!| is implemented both for guile and rt, and sets an input control-number.
+
+\scheme|ladspa-run| is an rt function. First argument is the plugin object, and second argument is a \scheme|vct|
+holding sound-data. The function returns a \scheme|vct|.
+
+\scheme|make-ladspa-gui| is a guile function that automatically makes a gui for the ladspa object. This one should
+hopefully be convenient to use to find default values. (see rt-examples.scm for an example)
+
+
+\begin{schemedisplay}
+(definstrument (ladspatest)
+  (let ((am-pitchshift (make-ladspa "am_pitchshift_1433" "amPitchshift")))
+    (<rt-play> (lambda ()
+		 (out (ladspa-run am-pitchshift
+				  (vct (in 0))))))))
+
+(define l (ladspatest))
+(ladspa-set! (-> l am-pitchshift) 0 0.5)
+(make-ladspa-gui l)
+(-> l stop)
+\end{schemedisplay}
+
+(API might change)
+
+
+
+
+
+
+
+\subsection{Routing signals}
+
+
+\subsubsection{Buses}
+
+To create a bus, use \scheme|make-bus|. \scheme|make-bus| takes one optional argument, which
+is number of channels. Default is 1.
+
+To read from a bus, use \scheme|read-bus|. To write to a bus, use \scheme|write-bus|.
+
+When writing to a bus, you add your signal if the bus had been written to in the current cycle.
+If not, the old value is overwritten.
+
+When reading, you always get the current value, unless the bus hadn't been written to for two
+or more cycles. Then you'll get zero.
+
+This behaviour is a bit different from Supercollider, but I think its better. I migh change
+the behaviour later though.
+
+
+
+\subsubsection{The in and out macros}
+
+The \scheme|in| and \scheme|out| macros are supposed to provide a convenient interface to the bus
+system. The basic way to play a sound to the soundcard is like this:
+\scheme|(write-bus *out-bus* sound)|. Instead, you can just write \scheme|(out sound)|.
+
+But thats not all. \scheme|in| and \scheme|out| also tries to automatically find out whether you are
+playing a VCT or just a single value, and which channel(s) to write to or read from.
+
+But thats not all either. The compiler automatically creates two special bus-variables
+called \scheme|out-bus| and \scheme|in-bus|, which, if \scheme|out-bus| \scheme|in-bus|
+aren't already declared locally \footnote{Never declare \scheme|in-bus| and \scheme|out-bus| in
+the toplevel!} is set to \scheme|*out-bus*| or \scheme|*in-bus*|. And since buses are settable,
+you can redefine outputs and inputs the way you like:
+
+\begin{schemedisplay}
+    (definstrument (oscillator)
+      (let ((osc (make-oscil)))
+        (<rt-play> (lambda ()
+  		      (out (oscil osc))))))
+    (define o (oscillator))
+    (define bus (make-bus 2))
+    (set! (-> o out-bus) bus)
+    (definstrument (volume vol)
+      (<rt-play> (lambda ()
+	           (out (* vol (in))))))
+    (volume 0.5 #:in-bus bus)
+    (rte-silence!)
+\end{schemedisplay}
+
+This way, you very seldom should have the need to use \scheme|read-bus| and \scheme|write-bus|
+directly.
+
+
+In my .emacs file, I have the following lines to colorize \scheme|out| and \scheme|in|:
+
+\begin{schemedisplay}
+(font-lock-add-keywords
+ 'scheme-mode 
+ '(("(\\(out\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face
+       nil t))))
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(in\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face
+       nil t))))
+\end{schemedisplay}
+
+
+
+\subsubsection{The syntax for in and out}
+
+This simple function will software monitor the two first channels for 10 seconds:
+\begin{schemedisplay}
+(<rt-play> 0 10
+	   (lambda ()
+	     (out 0 (in 0))
+	     (out 1 (in 1))))
+\end{schemedisplay}
+
+
+This function does the same, but swaps the channels:
+\begin{schemedisplay}
+(<rt-play> 0 10
+	   (lambda ()
+	     (out 0 (in 1))
+	     (out 1 (in 0))))
+\end{schemedisplay}
+
+
+This function does the same, but will mix both input-channels before sending
+the result to both channel 0 and 1.
+\begin{schemedisplay}
+(<rt-play> 0 10
+	   (lambda ()
+	     (out 0 1 (in 0 1))))
+\end{schemedisplay}
+
+
+
+This function does exactly the same as the one above, but by using a shorter syntax:
+\begin{schemedisplay}
+(<rt-play> 0 10
+	   (lambda ()
+	     (out (in))))
+\end{schemedisplay}
+
+
+
+This function will send the sum of the first two input-channels to
+the 10 first even-numbered output-channels:
+\begin{schemedisplay}
+(<rt-play> 0 10
+	   (lambda ()
+	     (out 0 2 4 6 8 10 12 14 16 18 (in))))
+\end{schemedisplay}
+
+
+
+
+This last argument for \scheme|out| can also be a vct. The following function
+will software monitor the two first channels for 10 seconds:
+\begin{schemedisplay}
+(<rt-play> 0 10
+	   (lambda ()
+	     (out (vct (in 0)
+                       (in 1)))))               
+\end{schemedisplay}
+
+
+This function does the same, but for channel 2, 3 and 4:
+\begin{schemedisplay}
+(<rt-play> 0 10
+	   (lambda ()
+	     (out 2 (vct (in 2)
+                         (in 3)
+                         (in 4)))))
+\end{schemedisplay}
+
+
+This function does the same as the one above, but halves the volume:
+\begin{schemedisplay}
+(<rt-play> 0 10
+	   (lambda ()
+	     (out 2 (vct-scale! (vct (in 2)
+                                     (in 3)
+                                     (in 4))
+                                0.5))))
+\end{schemedisplay}
+
+
+\textbf{Note that the API for out and in might change.} (although probably not too radically...)
+
+
+
+\subsubsection{The syntax for definstrument}
+
+When using the functions \scheme|in| or \scheme|out| inside a \scheme|definstrument| block, you can call the instrument with the hidden
+key-word arguments \scheme|out-bus| and \scheme|in-bus|.
+
+Example:
+
+\begin{enumerate}
+
+\item{First create an instrument, a simple oscillator.}
+
+\begin{schemedisplay}
+    (definstrument (oscillator)
+      (let ((osc (make-oscil)))
+        (<rt-play> (lambda ()
+  		      (out (oscil osc))))))
+\end{schemedisplay}
+
+\item{Make a bus with two channels}
+\begin{schemedisplay}
+    (define bus (make-bus 2))
+\end{schemedisplay}
+
+\item{Let the oscillator play to the bus}
+\begin{schemedisplay}
+    (oscillator #:out-bus bus)
+\end{schemedisplay}
+[No sound in the loudspeakers]
+
+\item{Connect the output from the oscillator to the soundcard}
+\begin{schemedisplay}
+    (<rt-play> (lambda ()
+	          (out (read-bus bus))))
+\end{schemedisplay}
+
+\end{enumerate}
+
+
+
+\subsection{Using CLM}
+
+Almost all CLM classes are supported, as well as all their methods,
+and other functions. Most things should work as expected, hopefully.
+
+Exceptions:
+
+\begin{itemize}
+
+\item{CLM constructors are not supported:
+
+\begin{schemedisplay}
+      (define func (rt (lambda ()
+                          (let* ((osc (make-oscil :frequency 440)))
+		             (oscil osc)))))
+
+      [error]
+\end{schemedisplay}}
+
+
+\item{For all the generators that may require an input-function argument, (that is convolve, granulate, phase-vocoder
+  and src), the input-function argument is not optional but must be supplied:
+  \begin{schemedisplay}
+    (src s
+         (lambda (direction)
+           (readin file)))
+  \end{schemedisplay}
+}
+
+\item{\scheme|(mus-srate)| returns the samplerate specified by the current rt-driver (ie jack), not what SND reports.
+  To avoid different values for mus-srate reported by snd and rt, \scheme|(set! (mus-srate) (rte-samplerate))|
+  is called in the init-process of rt-engine. If you set \scheme|(mus-srate)| later (in Guile), you might get unexpected results.
+}
+
+\item{\scheme|(mus-srate)| is not settable.}
+
+\item{The CLM generators in-any and out-any are not available. You probably want to use read-bus and write-bus instead.}
+
+\item{readin has mostly been rewritten to be able to buffer the whole sound first instead of reading from harddisk while playing.
+  The new readin also remembers which buffers are currently in use, so playing the same file many time simultaneously will not cause extra memory usage.
+
+  There is another thing to be aware of though: While the following block should work as expected:
+  \begin{schemedisplay}
+      (let ((rs (make-readin "1.wav")))
+        (<rt-play> 0 10
+	           (lambda ()
+	             (out (readin rs)))))
+  \end{schemedisplay}
+  The following block will not:
+  \begin{schemedisplay}
+      (let ((rs (vector (make-readin "1.wav")
+                        (make-readin "2.wav"))))
+        (<rt-play> 0 10
+	           (lambda ()
+	             (out 0 (readin (vector-ref 0 rs)))
+	             (out 1 (readin (vector-ref 1 rs))))))
+  \end{schemedisplay}
+  [A run-time error-checker will make the function exit before doing anything, and no sound will be heard.]
+       
+  Instead you have to do:
+  \begin{schemedisplay}
+      (let ((rs (vector (make-rt-readin "1.wav")
+                        (make-rt-readin "2.wav"))))
+        (<rt-play> 0 10
+	           (lambda ()
+	             (out 0 (readin (vector-ref 0 rs)))
+	             (out 1 (readin (vector-ref 1 rs))))))
+  \end{schemedisplay}
+
+}
+  
+\item{Short example of the use of readin, here's a file-player running in an endless loop:
+
+\begin{schemedisplay}
+      (let ((rs (make-readin "/home/kjetil/t1.wav")))
+        (<rt-play> (lambda ()
+	              (if (>= (mus-location rs) (mus-length rs))
+		          (set! (mus-location rs) 0))
+	              (out (readin rs)))))
+  \end{schemedisplay}
+}
+
+\item{Reverb for the locsig generator is not implemented. I'm a bit confused about locsig actually. I'm not sure the rt-implementation
+  is correct...}
+
+\item{Non of the frames/mixers/sound IO functions are supported, as they require disk-access, which shouldn't be done inside the
+  audio thread.}
+
+\item{Only \scheme|hz->radians| is implemented from the \emph{Useful functions} section of the CLM manual. (Most of them probably only requires
+  a 2-3 lines long macro to be supported though.)}
+
+\item{array-in, dot-product, sine-bank, edot-product, contrast-enchancement, ring-modulate, amplitude-modulate, fft, multiply-arrays,
+  \scheme|rectangular->polar|, \scheme|rectangular->polar|, spectrum and convolution is not implemented. (Most of these probably only requires
+  6-10 lines of wrapping-code to be supported.)}
+
+\end{itemize}
+
+Note that calling the CLM methods are not very efficient (that is, the \scheme|(mus-*)| functions). This will hopefully change, but until then,
+you can in certain situation significantly improve the efficiency of your code by avoid
+using CLM methods as far as possible. For example,
+
+\begin{schemedisplay}
+(let ((das-env (make-env `(0 400 1 500)
+			 #:duration 5)))
+  (<rt-play> (lambda ()
+	       (let ((envval (env das-env)))
+	         (if (>= envval 500)
+		     (remove-me))))))
+\end{schemedisplay}
+
+use more than reasonable less CPU than:
+
+\begin{schemedisplay}
+(let ((das-env (make-env `(0 400 1 500)
+			 #:duration 5)))
+  (<rt-play> (lambda ()
+	       (let ((envval (env das-env)))
+	         (if (>= (mus-location das-env) (mus-length das-env))
+		     (remove-me))))))
+\end{schemedisplay}
+
+The only exception is the methods for the rt-readin class, which access the attributes
+directly instead of doing indirect jumps. \newline
+So this is as efficient as possible:
+
+\begin{schemedisplay}
+      (let ((rs (make-readin "/home/kjetil/t1.wav")))
+        (<rt-play> (lambda ()
+	             (if (>= (mus-location rs) (mus-length rs))
+		         (set! (mus-location rs) 0))
+	             (out (readin rs)))))
+\end{schemedisplay}
+
+
+
+\subsection{Lockfree Ringbuffer}
+
+(not implemented)
+
+
+Use the ringbuffer clm-like generators to exchange data-streams between guile and
+the realtime thread.
+
+\subsubsection{ringbuffer}
+
+\begin{schemedisplay}
+(define osc (make-oscil))
+(define rb (make-ringbuffer (* 8192 256)       ;; Number of samples to buffer. This one should be \underline{huge} to avoid clicking.
+			    (lambda ()
+			      (oscil osc))))
+(<rt-play> 0 10
+	   (lambda ()
+	     (out (* 0.8 (ringbuffer rb)))))
+\end{schemedisplay}
+
+The above example is not very good, because you can run oscil directly in the
+realtime thread. A better example is below, because you can't call readin in the realtime thread.
+This is how you can play a file without buffering the whole file into memory, which the rt-version of readin does:
+
+
+\begin{schemedisplay}
+(define file (make-readin "/home/kjetil/t1.wav"))
+(define rb (make-ringbuffer (* 8192 256)
+			    (lambda ()
+			      (readin file))))
+(<rt-play> 0 10
+	   (lambda ()
+	     (out (* 0.8 (ringbuffer rb)))))
+\end{schemedisplay}
+
+
+
+\subsubsection{ringbuffer-location}
+
+Assumes that location doesn't change to radically, only 0 or 1 steps more or less
+compared to the last one. It can receive request for any step though, but it might not
+be able to catch the value in time.
+
+\begin{schemedisplay}
+(define file (file->sample "/home/kjetil/t1.wav"))
+(define rb (make-ringbuffer-location (* 8192 256)
+				     (lambda (location)
+				       (file->sample file location))))
+(define position 0)
+(<rt-play> 0 100
+	   (lambda ()
+	     (out (* 0.8 (ringbuffer-location rb position))) ;; If data is not available, a value from the buffer is returned instead. Might produce less clicks than zero.
+	     (set! position (1+ position))))
+\end{schemedisplay}
+    
+To delay playing until data is available:
+
+\begin{schemedisplay}
+(<rt-play> 0 100
+	   (lambda ()
+	     (if (ringbuffer-location? rb position)         ;; ringbuffer-location? whether data at the position is available. If \#f, a request is sent.
+	         (begin
+                    (out (* 0.8 (ringbuffer-location rb position)))
+                    (set! position (1+ position))))))
+\end{schemedisplay}
+
+
+
+
+\subsection{Provided Functions, Macros and Special Forms}
+
+%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Blocks}
+\begin{description}
+\item[\scheme|(begin <body>)|]  \hspace{\stretch{1}} Special form \newline
+  
+    Works as in scheme
+  
+\end{description}
+  
+
+%%%%%%%%%%%%%%%%%%%%%%%
+%\subsubsection{Control Flow}
+%\begin{description}
+%\item[\scheme|(call-with-current-continuation proc)|] \hspace{\stretch{1}} Special form \newline
+%  
+%  I think it works as in scheme, but I'm surprised how
+%  simple it was to implement...
+%  
+% (Not a very efficient function)
+%
+%\end{description}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Functions}
+\begin{description}
+\item[\scheme|(lambda ...)|] \hspace{\stretch{1}} Special form \newline
+  
+  Works as in scheme, except:
+  \begin{itemize}
+    \item Functions are not tail-recursive. (Be careful using named lets in non-realtime mode!)
+    \item Rest argument is not supported: \scheme|(lambda (a . rest) ...)| (error)
+      (You can work around this to a certain degree by using macros with keywords or optional arguments)
+  \end{itemize}
+  
+
+\item[\scheme|(let ...)|] \hspace{\stretch{1}} Macro \newline
+  
+  named let is implemented as a macro.
+  
+
+
+\end{description}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Variables}
+\begin{description}
+\item[\scheme|(define ...)|] \hspace{\stretch{1}} Special form \newline
+  
+  Works nearly as in scheme, but unlike scheme it can be placed anywhere in a block. For example:
+  \begin{schemedisplay}
+    (begin
+      (set! a 2)
+      (define d 9)
+      (+ a d))
+  \end{schemedisplay}
+  ...is legal.
+  
+
+\item[\scheme|(let ...)|] \hspace{\stretch{1}} Special form \newline
+  
+  Works as in scheme
+  
+
+\item[\scheme|(let* ...)|] \hspace{\stretch{1}} Special form \newline
+  
+  Works as in scheme.
+  
+
+\item[\scheme|(letrec ...)|] \hspace{\stretch{1}} Special form \newline
+
+  Works as in scheme.
+
+\item[\scheme|(letrec* ...)|] \hspace{\stretch{1}} Special form \newline
+  
+  Like let*, but with the functions available everywhere:
+  \begin{schemedisplay}
+           (rt-funcall (rt-compile (lambda ()
+				     (letrec* ((a 2)
+					       (b (lambda ()
+						    (c)))
+					       (c (lambda ()
+						    a)))
+				       (b)))))
+            => 2.0
+\end{schemedisplay}
+    (There is also a letrec* macro for guile in oo.scm.)
+  
+
+
+\item[\scheme|(set! ...)|] \hspace{\stretch{1}} Special form \newline
+  
+Works as in scheme, except that setting Guile variables will not affect the Guile side:
+\begin{schemedisplay}
+        (let* ((a 5)
+	       (b (rt-compile (lambda ()
+				(set! a 9)
+				a)))
+	       (c (rt-funcall b)))
+	  (list a c))
+	 => (5 9.0)
+\end{schemedisplay}
+        (For setting a large number of variables to be visible from the Guile-side, you can use \scheme|vct-set!|)
+  
+
+
+\end{description}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Conditionals}
+\begin{description}
+\item[\scheme|(if <test> <consequent> <alternate>)|]
+\item[\scheme|(if <test> <consequent>)|] $ $
+  
+
+  Works as in scheme. But beware that there is no boolean type, and \#f=0 and \#t=1.
+  Therefore, the following expression will return 1, which is not the case
+  for scheme: \scheme|(if 0 0 1)|
+  
+
+\item[\scheme|(case ...)|] \hspace{\stretch{1}} Macro \newline
+  
+    works as in scheme, except that = is used for testing instead of eqv?
+  
+
+\item[\scheme|(cond ...)|] \hspace{\stretch{1}} Macro \newline
+  
+    works as in sheme, but \scheme|=>| is not supported
+  
+
+\item[\scheme|(<  ...)|] \hspace{\stretch{1}} Macro \newline
+  
+    works as in scheme
+  
+
+\item[\scheme|(>  ...)|] \hspace{\stretch{1}} Macro \newline
+  
+    works as in scheme
+  
+
+\item[\scheme|(< ...)|] \hspace{\stretch{1}} Macro \newline
+  
+    works as in scheme
+  
+
+\item[\scheme|(=  ...)|] \hspace{\stretch{1}} Macro \newline
+  
+    works as in scheme
+  
+
+\item[\scheme|(>=  ...)|] \hspace{\stretch{1}} Macro \newline
+  
+    works as in scheme
+  
+
+\item[\scheme|(= ...)|] \hspace{\stretch{1}} Macro \newline
+  
+    works as in scheme
+  
+
+\item[\scheme|(not ...)|] \hspace{\stretch{1}} Special form \newline
+  
+    works as in scheme
+  
+
+
+\end{description}
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Iteration}
+\begin{description}
+\item[\scheme|(while <test> <body>)|] \hspace{\stretch{1}} Macro \newline
+  
+  Works as in Guile.(Does not expands to a recursive function.)
+  
+
+%\item[\scheme|(break)|] \hspace{\stretch{1}} Special form \newline
+%  
+%    Used to break out of a while loop. (Not a very efficient function)
+%
+%  
+%\item[\scheme|(continue)|] \hspace{\stretch{1}} Special form \newline
+%  
+%  goto the top of a while loop.  (Not a very efficient function)
+  
+
+
+
+\item[\scheme|(do ...)|] \hspace{\stretch{1}} Macro \newline
+  
+    works as in scheme (Using while)
+  
+\item[\scheme|(range ...)|] \hspace{\stretch{1}} Macro \newline
+  
+    $ $ \begin{schemedisplay}
+       (range i 5 10
+              (printf "%d " i))
+        => 5 6 7 8 9
+        (range i 10 5
+	       (printf "%d " i))
+        => 10 9 8 7 6
+     \end{schemedisplay} 
+     (Using while)
+  
+
+
+
+\end{description}
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Logical Operators}
+\begin{description}
+\item[\scheme|(and ...)|] \hspace{\stretch{1}} Special form \newline
+  
+    works as in scheme
+  
+
+\item[\scheme|(or ...)|] \hspace{\stretch{1}} Special form \newline
+  
+  works as in scheme
+  
+
+\end{description}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Mathematics}
+\begin{description}
+\item[\scheme|(+  ...)|] \hspace{\stretch{1}} Function \newline
+  
+    works as in scheme
+  
+  
+\item[\scheme|(-  ...)|] \hspace{\stretch{1}} Macro \newline
+  
+    works as in scheme
+  
+
+\item[\scheme|(*  ...)|] \hspace{\stretch{1}} Function \newline
+  
+    works as in scheme
+  
+
+\item[\scheme|(/ ...)|] \hspace{\stretch{1}} Macro \newline
+  
+    works as in scheme
+  
+
+\item[\scheme|(1+  ...)|] \hspace{\stretch{1}} Function \newline
+  
+    works as in Guile
+  
+
+\item[\scheme|(1- ...)|] \hspace{\stretch{1}} Function \newline
+  
+    works as in Guile
+  
+
+\item[\scheme|(min  ...)|] \hspace{\stretch{1}} Macro \newline
+  
+    works as in scheme
+  
+
+\item[\scheme|(max ...)|] \hspace{\stretch{1}} Macro \newline
+  
+    works as in scheme
+  
+
+
+
+\end{description}
+
+And:
+
+\begin{quote}
+sin cos tan abs log exp expt acos asin atan sqrt
+asinh acosh atanh cosh sinh tanh
+atan2 (see ``man atan2'')
+hypot (see ``man hypot'')
+
+zero? positive? negative? odd? even?
+remainder modulo quotient
+
+floor ceiling truncate round truncate
+
+logand logior lognot logxor ash
+random
+\end{quote}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Lists, pairs, vectors and VCT's}
+%%\begin{description}
+
+VCT's are extremely efficiently implemented.
+
+Pairs, lists and vectors are not, and should be avoided.
+
+The provided functions are:
+
+\begin{quote}
+vct make-vct vct-map! vct-length vct-ref vct-set! vct-scale! vct-offset! vct-fill!
+
+vector? vector-length vector-ref
+
+pair? null?
+car cdr
+cadr caddr cadddr caddddr
+cddr cdddr cddddr cdddddr
+cdar cdadr cdaddr cdadddr
+caar caadr caaddr caadddr
+list-ref
+for-each
+\end{quote}
+
+
+
+%%\end{description}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%
+\subsubsection{Others}
+\begin{description}
+\item[\scheme|(declare ...)|] \hspace{\stretch{1}} Special form \newline
+  
+  Works as in common lisp, except that the name of the types are different: \scheme|<int>|, \scheme|<float>| and \scheme|<double>| .
+
+\begin{schemedisplay}
+           (define-rt (int-fib n)
+	     (declare (<int> n))
+	     (if (< n 2)
+		 n
+		 (+ (fib (- n 1))
+		    (fib (- n 2)))))
+\end{schemedisplay}
+       ...which is the same as:
+\begin{schemedisplay}
+           (define-rt (int-fib n)
+	     (declare (<int> n))
+	     (the <int>
+		  (if (< n 2)
+		      n
+		      (+ (fib (- n 1))
+			 (fib (- n 2))))))
+\end{schemedisplay}
+        As you see, the compiler is a little bit intelligent when determine types, so it should not
+        be necessary to use \scheme|declare| on all numeric variables and \scheme|the| for every expression, (although it shouldn't hurt either).
+
+
+\item[\scheme|(is-type? <type> <variable>)|] \hspace{\stretch{1}} Special form \newline
+  
+  Mostly for internal use:
+  \begin{schemedisplay}
+             (let ((a 5))
+	       (is-type? <int> a))
+             => 1
+             (let ((a 5))
+	       (is-type? <float> a))
+             => 0
+\end{schemedisplay}
+  The first argument must be a type, and the third argument must be a variable-name.
+  This is not legal: \scheme|(is-type? <int> (+ 2 3))|
+  Used to implement \scheme|exact?|/\scheme|inexact?|/etc., and for various optimizations.
+  
+
+
+\item[\scheme|(the ...)|] \hspace{\stretch{1}} Special form \newline
+  
+ Works as in common lisp, except that the name of the types are different: \scheme|<int>|, \scheme|<float>| and \scheme|<double>| are
+       the currently supported numeric types.
+       \begin{schemedisplay}
+       (define-rt (int-cast-add a b)
+          (the <int>
+	       (+ a b)))
+
+       [...which is the same as:
+
+       (define-rt (int-cast-add a b)
+          (declare (<float> a b))
+          (the <int>
+	       (+ a b))) ]
+
+       \end{schemedisplay}
+  
+
+\item[\scheme|(include-guile-func ...)|] \hspace{\stretch{1}} Macro \newline
+  
+    Includes the code of a Guile function.
+    \begin{schemedisplay}
+                      (define (add a b)
+			(+ a b))
+                      (rt-funcall (rt (lambda ()
+					(define add (include-guile-func add))
+					(add 2 3))))
+                      => 5
+    \end{schemedisplay}
+  
+
+\item[\scheme|(remove-me)|] \hspace{\stretch{1}} Macro \newline
+  
+    Removes the function from the realtime engine.
+    See rt-examples.scm for an example-
+  
+  
+
+\item[\scheme|(unquote ...)|] \hspace{\stretch{1}} Macro \newline
+  
+    $ $ \begin{schemedisplay}
+           (define a 9)
+           (rt-funcall (rt (lambda()
+			     (+ ,pi ,(+ 5 a))))
+           => 17.1415926535898
+
+    \end{schemedisplay}
+ 
+
+\end{description}
+
+
+And:
+
+\begin{quote}
+
+exact? inexact? number? string?
+\scheme|exact->inexact| \scheme|inexact->exact|
+
+printf (Using c's fprintf with stderr as the first argument. Warning, this one is not realtime safe!)
+
+\end{quote}
+
+
+
+
+
+
+
+
+\subsection{Various}
+
+* In addition to the functions and macros described above, theres a bunch of very internal functions and macros
+  that used wrongly can hang your machine or destroy your harddisk. 
+  Most of them start with a prefix \scheme|rt-| or \scheme|rt_|.
+
+  One very useful function might be \scheme|rt_alloc|
+  which does realtime-safe memory allocation. All memory allocated with \scheme|rt_alloc| is automatically
+  freed when the function returns.
+
+* Theres still a lot of smaller optimizations thats possible to do. However,
+  gcc $(V>=3)$ should be able to fix most of these.
+
+* Note to myself, \scheme|define-ec-struct| in eval-c.scm needs to be documented.
+
+
+
+\newpage
+\section{Missing functionality}
+
+
+\subsection{Order of execution}
+There is no API to set the order of execution for the \scheme|<realtime>|-instances. It can/should be done
+automatically by looking at which instance depends on which bus, but that hasn't been implemented (yet).
+
+For now, you can order the execution by using the fact that instances are always put first in the queue.
+
+
+%\newpage
+%\section{Credits}
+\newpage
+\section{History}
+
+03.08.2006: Added rt-vct-struct and rt-vector-struct syntactic sugar stuff. See rt-examples.scm.
+            Various smaller fixes.
+
+03.06.2006: Removed \scheme|break| and \scheme|continue|. They never really worked very well.
+	    Removed \scheme|call-with-current-continuation| which certainly never really worked very well.
+
+08.07.2005-02.06.2006: Various changes
+
+08.07.2005: Various bugs fixed, added gliding shared vars and midi. Changed behaviour for read-bus and write-bus.
+
+15.06.2005: Added \scheme|make-ladspa-gui|.
+
+09.06.2005: Redefined \scheme|define-rt| to define rt-functions instead of guile-functions.
+
+07.06.2005: Added setters for buses, introducing a general patching mechanism. Very nice I think.
+
+06.06.2005: Added the hidden in-bus and out-bus keyword arguments for definstrument. (the \scheme|in| and \scheme|out| macros uses in-bus and out-bus)
+
+05.06.2005: Added -fast-math to the compiler-options (again). Don't think there is any good reason not to... (?)
+
+05.06.2005: Made input and output busses (\scheme|*in-bus*| and \scheme|*out-bus|), and let \scheme|in| and \scheme|out| call \scheme|read-bus| and \scheme|write-bus|.
+
+02.06.2005: Added support for the intel C compiler. To use icc, set \scheme|*eval-c-compiler*| to \scheme|"icc"|. (I did not
+notice any difference in the performance compaired to gcc 4.0 (or even gcc 3.2), but it is supposed to be
+faster in some situations)
+
+02.06.2005: Added shared variables and ladspa. Fixed letrec*
+
+20.05.2005: Added \scheme|vct|, \scheme|make-vct|, and the bus-system.
+
+%%\section{Emacs}
+
+\newpage
+\section{Notes}
+
+[3] Paul Graham, ``ANSI Common Lisp'', 1996, p. 313: ``Not an operator,
+    but resembles one (...)''. (About \scheme|declare|)
+
+
+
+
+\end{document} 
+

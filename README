@@ -1,0 +1,12 @@
+
+Snd-RT is the realtime extension for the sound editor SND.
+
+The files in this repository are the ones specific for Snd-RT.
+To run Snd-Rt, it's simplest to install Snd-ls:
+http://archive.notam02.no/arkiv/src/snd/
+
+Homepage:
+http://archive.notam02.no/arkiv/doc/snd-rt/
+
+-Kjetil
+

@@ -1,0 +1,394 @@
+;;
+;; Various snd-rt stuff for emacs. My ~/.emacs has this line:
+;; (load "/home/kjetil/snd-run/rt-DotEmacs")
+;;
+;; -Kjetil. Last updated 7.3.2008
+
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(definstrument\\|run\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 (cond ((match-beginning 1) font-lock-function-name-face)
+	     ((match-beginning 2) font-lock-variable-name-face)
+	     (t font-lock-type-face))
+       nil t))))
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(def-method\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 (cond ((match-beginning 1) font-lock-function-name-face)
+	     ((match-beginning 2) font-lock-variable-name-face)
+	     (t font-lock-type-face))
+       nil t))))
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(define-rt\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 (cond ((match-beginning 1) font-lock-function-name-face)
+	     ((match-beginning 2) font-lock-variable-name-face)
+	     (t font-lock-type-face))
+       nil t))))
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(define-stalin\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 (cond ((match-beginning 1) font-lock-function-name-face)
+	     ((match-beginning 2) font-lock-variable-name-face)
+	     (t font-lock-type-face))
+       nil t))))
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(define-stalin-ec\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 font-lock-type-face)
+    (3 (cond ((match-beginning 1) font-lock-function-name-face)
+	     ((match-beginning 2) font-lock-variable-name-face)
+	     ((match-beginning 3) font-lock-function-name-face)
+	     (t font-lock-type-face))
+       nil t))))
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(define-rt-ec\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 font-lock-type-face)
+    (3 (cond ((match-beginning 1) font-lock-function-name-face)
+	     ((match-beginning 2) font-lock-variable-name-face)
+	     ((match-beginning 3) font-lock-function-name-face)
+	     (t font-lock-type-face))
+       nil t))))
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(range\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 (cond ((match-beginning 1) font-lock-function-name-face)
+	     ((match-beginning 2) font-lock-variable-name-face)
+	     (t font-lock-type-face))
+       nil t))))
+(put 'range 'scheme-indent-function 'defun)
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(c-define\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 (cond ((match-beginning 1) font-lock-function-name-face)
+	     ((match-beginning 2) font-lock-variable-name-face)
+	     (t font-lock-type-face))
+       nil t))))
+(put 'c-define 'scheme-indent-function 'defun)
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(delafina\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 (cond ((match-beginning 1) font-lock-function-name-face)
+	     ((match-beginning 2) font-lock-variable-name-face)
+	     (t font-lock-type-face))
+       nil t))))
+(put 'delafina 'scheme-indent-function 'defun)
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(labamba\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 nil
+       nil t))))
+(put 'labamba 'scheme-indent-function 1)
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(c-define*\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 (cond ((match-beginning 1) font-lock-function-name-face)
+	     ((match-beginning 2) font-lock-variable-name-face)
+	     (t font-lock-type-face))
+       nil t))))
+(put 'c-define* 'scheme-indent-function 'defun)
+
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(define*2\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 (cond ((match-beginning 1) font-lock-function-name-face)
+	     ((match-beginning 2) font-lock-variable-name-face)
+	     (t font-lock-type-face))
+       nil t))))
+(put 'define*2 'scheme-indent-function 'defun)
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(while\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 (cond ((match-beginning 1) font-lock-function-name-face)
+	     ((match-beginning 2) font-lock-variable-name-face)
+	     (t font-lock-type-face))
+       nil t))))
+(put 'while 'scheme-indent-function 1)
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(when\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 (cond ((match-beginning 1) font-lock-function-name-face)
+	     ((match-beginning 2) font-lock-variable-name-face)
+	     (t font-lock-type-face))
+       nil t))))
+(put 'when 'scheme-indent-function 1)
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(spawn\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 (cond ;((match-beginning 1) font-lock-variable-name-face)
+	     ((match-beginning 2) font-lock-builtin-face)
+	     ;(t font-lock-type-face)
+             )
+       nil t))))
+(put 'spawn 'scheme-indent-function 'defun)
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(wait\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 (cond ;((match-beginning 1) font-lock-variable-name-face)
+	     ((match-beginning 2) font-lock-builtin-face)
+	     ;(t font-lock-type-face)
+             )
+       nil t))))
+(put 'wait 'scheme-indent-function 'defun)
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(yield\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 (cond ;((match-beginning 1) font-lock-variable-name-face)
+	     ((match-beginning 2) font-lock-builtin-face)
+	     ;(t font-lock-type-face)
+             )
+       nil t))))
+(put 'yield 'scheme-indent-function 'defun)
+
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(sound\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 (cond ;((match-beginning 1) font-lock-variable-name-face)
+	     ((match-beginning 2) font-lock-builtin-face)
+	     ;(t font-lock-type-face)
+             )
+       nil t))))
+(put 'sound 'scheme-indent-function 'defun)
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(block\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 (cond ;((match-beginning 1) font-lock-variable-name-face)
+	     ((match-beginning 2) font-lock-builtin-face)
+	     ;(t font-lock-type-face)
+             )
+       nil t))))
+(put 'block 'scheme-indent-function 'defun)
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(spawn-block\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 (cond ;((match-beginning 1) font-lock-variable-name-face)
+	     ((match-beginning 2) font-lock-builtin-face)
+	     ;(t font-lock-type-face)
+             )
+       nil t))))
+(put 'spawn-block 'scheme-indent-function 'defun)
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(wait-midi\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 (cond ((match-beginning 1) font-lock-function-name-face)
+	     ((match-beginning 2) font-lock-variable-name-face)
+	     (t font-lock-type-face))
+       nil t))))
+(put 'wait-midi 'scheme-indent-function 'defun)
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(define-c-macro\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 font-lock-builtin-face
+       nil t))))
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(define-faust-macro\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 font-lock-builtin-face
+       nil t))))
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(define-c/faust-macro\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 font-lock-builtin-face
+       nil t))))
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(define-stalin-macro\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 font-lock-builtin-face
+       nil t))))
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(c-define-macro\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 font-lock-constant-face
+       nil t))))
+(put 'c-define-macro 'scheme-indent-function 1)
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(define-rt-macro\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 font-lock-constant-face
+       nil t))))
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(define-rt+-macro\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 font-lock-constant-face
+       nil t))))
+
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(def-class\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 font-lock-type-face
+       nil t))))
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(c-load-from-path\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 font-lock-type-face
+       nil t))))
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(c-import\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 font-lock-type-face
+       nil t))))
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(def-var\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 font-lock-variable-name-face
+       nil t))))
+
+(font-lock-add-keywords
+ 'scheme-mode 
+ '(("(\\(out\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face
+       nil t))))
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(in\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face
+       nil t))))
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(where\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face
+       nil t))))
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(compose\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face
+       nil t))))
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(send\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face
+       nil t))))
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(new\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face
+       nil t))))
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(public\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face
+       nil t))))
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(extern\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-function-name-face
+       nil t))))
+
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(def-constructor\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 font-lock-type-face
+       nil t))))
+
+(font-lock-add-keywords
+ 'snd-guile-mode
+ '(("(\\(definstrument\\|run\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 (cond ((match-beginning 1) font-lock-function-name-face)
+	     ((match-beginning 2) font-lock-variable-name-face)
+	     (t font-lock-type-face))
+       nil t))))
+
+(font-lock-add-keywords
+ 'lisp-mode
+ '(("(\\(def[p]?instrument\\|def-optkey-fun\\|run\\|let\\*?\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 (cond ((match-beginning 1) font-lock-function-name-face)
+	     ((match-beginning 2) font-lock-variable-name-face)
+	     (t font-lock-type-face))
+       nil t))))
+
+(put 'letrec* 'scheme-indent-function 1)
+(font-lock-add-keywords
+ 'scheme-mode
+ '(("(\\(letrec[*]\\)\\>\\s-*(?\\(\\sw+\\)?"
+    (1 font-lock-keyword-face)
+    (2 font-lock-variable-name-face
+       nil t))))
+
+
+;; Press C-return to stop sound.
+;;
+(defun rte-silence! ()
+  (interactive)
+  (comint-send-string (scheme-proc) "(rte-silence!)\n"))
+
+(global-set-key (kbd "<C-return>") 'rte-silence!)
+
+(defun rte-info ()
+  (interactive)
+  (comint-send-string (scheme-proc) "(rte-info)\n"))
+
+(global-set-key (kbd "<C-S-return>") 'rte-info)
+
+;;(get-buffer "auai")
+;(comint-send-string (scheme-proc) (concat "(c-display \"" (x-get-selection) "\")\n"))
+
+;(concat " " " ")
+
